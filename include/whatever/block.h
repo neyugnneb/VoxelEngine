@@ -10,7 +10,8 @@ enum class BlockType : unsigned char {
     Grass,
     Dirt,
     Stone,
-    Sand
+    Sand,
+    Water
 };
 
 struct BlockTexture {
@@ -26,6 +27,7 @@ inline BlockTexture getTexture(BlockType type) {
         case BlockType::Dirt: return {2, 2, 2};
         case BlockType::Stone: return {3, 3, 3};
         case BlockType::Sand: return {4, 4, 4};
+        case BlockType::Water: return {5, 5, 5};
     };
 
     //shouldn't happen

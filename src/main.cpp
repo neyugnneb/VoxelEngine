@@ -9,12 +9,7 @@
 
 #include <whatever/shader.h>
 #include <whatever/camera.h>
-#include <whatever/vertexBuffer.h>
-#include <whatever/vertexArray.h>
-#include <whatever/elementBuffer.h>
-#include <whatever/block.h>
-#include <whatever/chunk.h>
-#include <whatever/raycast.h>
+#include <whatever/world.h>
 #include <vector>
 #include <memory>
 #include <iostream>
@@ -29,7 +24,7 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // camera
-Camera camera(glm::vec3(0.0f, 0.0f, 3.0f));
+Camera camera(glm::vec3(0.0f, 40.0f, 3.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
 bool firstMouse = true;
@@ -37,10 +32,6 @@ bool firstMouse = true;
 // timing
 float deltaTime = 0.0f;	// time between current frame and last frame
 float lastFrame = 0.0f;
-
-// chunks/world
-std::vector<std::unique_ptr<Chunk>> chunks;
-
 
 int main()
 {
@@ -78,31 +69,21 @@ int main()
         return -1;
     }
 
-    // build and compile our shader zprogram
-    // ------------------------------------
-    Shader ourShader("vertexshader.vs", "fragshader.fs"); 
-
+    // build and compile our shader program
+    Shader blockShader("vertexshader.vs", "fragshader.fs"); 
+    Shader waterShader("vertexshader.vs", "waterFrag.fs");
+    
     //Enable depth test
     glEnable(GL_DEPTH_TEST);
-
     //randomized world generation
     int seed = rand();
 
-    const int RENDER_DISTANCE = 3;
+    const int RENDER_DISTANCE = 5;
 
-    // Generate a square of chunks centered at (0,0)
-    for (int cx = -RENDER_DISTANCE; cx <= RENDER_DISTANCE; cx++) {
-        for (int cz = -RENDER_DISTANCE; cz <= RENDER_DISTANCE; cz++) {
-            auto chunk = std::make_unique<Chunk>(cx, cz, seed);
-            chunk->generateChunk();
-            chunk->setupMesh();
-            chunks.push_back(std::move(chunk));
-        }
-    }
+    World world(seed, RENDER_DISTANCE);
 
 
     // load and create a texture 
-    // -------------------------
     unsigned int texture;
     glGenTextures(1, &texture);
     glBindTexture(GL_TEXTURE_2D, texture); // all upcoming GL_TEXTURE_2D operations now have effect on this texture object
@@ -115,7 +96,7 @@ int main()
     // load image, create texture and generate mipmaps
     int width, height, nrChannels;
     stbi_set_flip_vertically_on_load(true);
-    unsigned char *data = stbi_load("atlas.png", &width, &height, &nrChannels, 0);
+    unsigned char *data = stbi_load("atlas4.png", &width, &height, &nrChannels, 0);
     if (data)
     {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
@@ -130,9 +111,9 @@ int main()
 
     // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
     // -------------------------------------------------------------------------------------------
-    ourShader.use(); // don't forget to activate/use the shader before setting uniforms!
+    blockShader.use(); // don't forget to activate/use the shader before setting uniforms!
     // either set it manually like so:
-    glUniform1i(glGetUniformLocation(ourShader.ID, "texture1"), 0);
+    glUniform1i(glGetUniformLocation(blockShader.ID, "texture1"), 0);
 
     //Uncomment glPolygonMode to see wireframe of block
     //glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
@@ -147,37 +128,35 @@ int main()
         lastFrame = currentFrame;
 
         // input
-        // -----
         processInput(window);
 
         // render
-        // ------
         glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
         
 
         // pass projection matrix to shader (note that in this case it could change every frame)
-        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 100.0f);
-        ourShader.setMat4("projection", projection);
+        glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 500.0f);
+        blockShader.setMat4("projection", projection);
 
         // camera/view transformation
         glm::mat4 view = camera.GetViewMatrix();
-        ourShader.setMat4("view", view);
+        blockShader.setMat4("view", view);
 
         glm::mat4 model = glm::mat4(1.0f);
-        // model = glm::translate(model, glm::vec3(0.0f, 0.0f, 0.0f));
-        // model = glm::rotate(model, (float)glfwGetTime(), glm::vec3(0.5f, 1.0f, 0.0f));
-        ourShader.setMat4("model", model);
+        blockShader.setMat4("model", model);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
-        ourShader.use();
-        ourShader.setInt("texture1", 0);
+        blockShader.use();
+        blockShader.setInt("texture1", 0);
 
-
-        for (auto& chunk : chunks) {
-            chunk->draw();
-        }
+        // 1. Update world based on camera position
+        world.update(camera.Position);
+        world.draw(blockShader, waterShader);
+        
+        // restore depth mask
+        glDepthMask(GL_TRUE);
 
         glfwSwapBuffers(window);
         glfwPollEvents();
@@ -231,24 +210,8 @@ void mouse_callback(GLFWwindow* window, double xposIn, double yposIn)
 
 //whenever the mouse buttons are clicked, this is called
 void mouse_button_callback(GLFWwindow* window, int button, int actions, int mods) {
-    RayCastHit hit = rayCastBlock(camera.Position, camera.Front, 5.0f, chunks);
 
-    if (button == GLFW_MOUSE_BUTTON_LEFT && actions == GLFW_PRESS) {
-        if (hit.hit) {
-            setBlockAt(hit.worldX, hit.worldY, hit.worldZ, BlockType::Air, chunks);
-        }
-    }
-
-    if (button == GLFW_MOUSE_BUTTON_RIGHT && actions == GLFW_PRESS) {
-        if (hit.hit) {
-            // Place a block *on the face* that was hit
-            int nx = hit.worldX + hit.normal.x;
-            int ny = hit.worldY + hit.normal.y;
-            int nz = hit.worldZ + hit.normal.z;
-
-            setBlockAt(nx, ny, nz, BlockType::Sand, chunks);
-        }
-    }
+    //Placeholder
 
 }
 

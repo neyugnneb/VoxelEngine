@@ -16,6 +16,7 @@
                 "${workspaceFolder}\\src\\elementBuffer.cpp",
                 "${workspaceFolder}\\src\\chunk.cpp",
                 "${workspaceFolder}\\src\\raycast.cpp",
+                "${workspaceFolder}\\src\\world.cpp",
 
 
                 // include directories
