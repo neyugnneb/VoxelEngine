@@ -2,11 +2,13 @@
 #include <whatever/chunk.h>
 #include <glad/glad.h>
 #include <glm/glm.hpp>
+#include <glm/gtc/constants.hpp>
+#include <glm/common.hpp>
 
 #include <stdlib.h>
 
 World::World(int randomSeed_, int renderDistance_) 
-    : randomSeed(randomSeed_), renderDistance(renderDistance_) {
+    : randomSeed(randomSeed_), renderDistance(renderDistance_), timeOfDay(12.0f), dayLength(40.0f) {
     
 }
 
@@ -30,10 +32,18 @@ void World::update(const glm::vec3& playerPosition) {
     unloadChunk(playerChunkX, playerChunkZ);
 }
 
-void World::draw(Shader& blockShader, Shader& waterShader)
+void World::draw(Shader& blockShader, Shader& waterShader, glm::mat4 projection, glm::mat4 view, glm::mat4 model)
 {
-    // ---- PASS 1: OPAQUE BLOCKS ----
-    blockShader.use();
+
+    //Gets the light levels for the world
+    float wl = worldLight();
+
+    // opaque block
+    // pass projection matrix to shader (note that in this case it could change every frame)
+    blockShader.setFloat("worldLight", wl);
+    blockShader.setMat4("projection", projection);
+    blockShader.setMat4("view", view);
+    blockShader.setMat4("model", model);
     glDepthMask(GL_TRUE);
     glDisable(GL_BLEND);
 
@@ -41,8 +51,12 @@ void World::draw(Shader& blockShader, Shader& waterShader)
         p.second->drawBlock();
     }
 
-    // ---- PASS 2: WATER (transparent) ----
+    // water/transparent blocks
     waterShader.use();
+    waterShader.setFloat("worldLight", wl);
+    waterShader.setMat4("projection", projection);
+    waterShader.setMat4("view", view);
+    waterShader.setMat4("model", model);
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
     glDepthMask(GL_FALSE);  // DO NOT WRITE DEPTH
@@ -94,4 +108,13 @@ void World::unloadChunk(int playerChunkX, int playerChunkZ) {
     for (long long key : chunksToUnload) {
         chunks.erase(key);
     }
+}
+
+void World::updateTime(float deltaTime) {
+    timeOfDay += deltaTime * (24.0f / dayLength);
+    if (timeOfDay >= 24.0f) timeOfDay -= 24.0f;
+}
+
+float World::worldLight() {
+    return glm::clamp(static_cast<float>(sin((timeOfDay / 24.0f) * glm::pi<float>()) * 2.0f), 0.1f, 1.0f);
 }

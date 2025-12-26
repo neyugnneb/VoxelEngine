@@ -11,7 +11,9 @@ enum class BlockType : unsigned char {
     Dirt,
     Stone,
     Sand,
-    Water
+    Water,
+    Log,
+    Leaf
 };
 
 struct BlockTexture {
@@ -28,21 +30,28 @@ inline BlockTexture getTexture(BlockType type) {
         case BlockType::Stone: return {3, 3, 3};
         case BlockType::Sand: return {4, 4, 4};
         case BlockType::Water: return {5, 5, 5};
+        case BlockType::Log: return {6, 6, 6};
+        case BlockType::Leaf: return {7, 7, 7};
     };
 
     //shouldn't happen
     return {0, 0, 0};
 };
 
+inline bool isSunTransparent(BlockType type) {
+    return type == BlockType::Water || type == BlockType::Air || type == BlockType::Leaf;
+};
+
 class Block{
     public:
-    Block() : type(BlockType::Air), blockPosition(0.0f, 0.0f, 0.0f) {} 
+    Block() : type(BlockType::Air), blockPosition(0.0f, 0.0f, 0.0f), lightLevel(0) {} 
     Block(BlockType blockType, glm::vec3 blockPosition)
-    : type(blockType), blockPosition(blockPosition) {}
+    : type(blockType), blockPosition(blockPosition), lightLevel(0) {}
 
     BlockType type;
     glm::vec3 blockPosition;
-    BlockTexture tex;
+    float lightLevel;
+
 };
 
 #endif

@@ -46,10 +46,23 @@ private:
     void addFace(int x, int y, int z, int faceDir,unsigned int& vertexCount, BlockType blockType);
     void addWaterFace(int x, int y, int z, int faceDir, unsigned int& waterVertexCount);
 
+    //Block detection
     bool isAir(int x, int y, int z);
     bool isWater(int x, int y, int z);
 
+    //Tree generation
+    void tryPlaceTree(int x, int y, int z, uint32_t seed);
+    void generateTrees(uint32_t worldSeed);
+    bool treeNearby(int x, int y, int z, int radius);
+
     FastNoiseLite noise;
+
+    inline bool inBounds(int x, int y, int z) const {
+        return x >= 0 && x < CHUNK_WIDTH &&
+               y >= 0 && y < CHUNK_HEIGHT &&
+               z >= 0 && z < CHUNK_WIDTH;
+    }
+
 };
 
 #endif

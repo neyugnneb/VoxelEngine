@@ -6,6 +6,7 @@ Chunk::Chunk(int chunkX, int chunkZ, int randomSeed) : chunkX(chunkX), chunkZ(ch
     noise.SetNoiseType(FastNoiseLite::NoiseType_Perlin);
     noise.SetFrequency(0.02f);   // controls smoothness of terrain
     noise.SetSeed(randomSeed);         // randomized world generation
+    const int SEA_LEVEL = 20;
 
     for (int x = 0; x < CHUNK_WIDTH; x++) {
         for (int z = 0; z < CHUNK_WIDTH; z++) {
@@ -18,12 +19,14 @@ Chunk::Chunk(int chunkX, int chunkZ, int randomSeed) : chunkX(chunkX), chunkZ(ch
             float n = noise.GetNoise(worldX, worldZ);
 
             // Map to height range [0, 40]
-            int groundHeight = static_cast<int>((n + 1.0f) * 0.5f * 40.0f);
+            int groundHeight = static_cast<int>((n + 1.0f) * 0.5f * 50.0f);
 
             for (int y = 0; y < CHUNK_HEIGHT; y++) {
                 if (y < groundHeight - 3) {
                     blocks[x][y][z] = Block(BlockType::Stone, glm::vec3(x, y, z));
-                } else if (y < groundHeight - 1) {
+                } else if (y < groundHeight && y < SEA_LEVEL) {
+                    blocks[x][y][z] = Block(BlockType::Sand, glm::vec3(x, y, z));
+                } else if (y < groundHeight -1) {
                     blocks[x][y][z] = Block(BlockType::Dirt, glm::vec3(x, y, z));
                 } else if (y < groundHeight) {
                     blocks[x][y][z] = Block(BlockType::Grass, glm::vec3(x, y, z));
@@ -36,7 +39,6 @@ Chunk::Chunk(int chunkX, int chunkZ, int randomSeed) : chunkX(chunkX), chunkZ(ch
 
     }
 
-    const int SEA_LEVEL = 20;
     //Generates the water blocks up to sea level
     for (int x = 0; x < CHUNK_WIDTH; x++) {
         for (int z = 0; z < CHUNK_WIDTH; z++) {
@@ -48,6 +50,25 @@ Chunk::Chunk(int chunkX, int chunkZ, int randomSeed) : chunkX(chunkX), chunkZ(ch
             }
         }
     }
+
+    generateTrees(randomSeed);
+
+    for (int x = 0; x < CHUNK_WIDTH; x++) {
+        for (int z = 0; z < CHUNK_WIDTH; z++) {
+            float light = 15;
+            for (int y = CHUNK_HEIGHT - 1; y >= 0; --y) {
+                Block& b = blocks[x][y][z];
+
+                if (isSunTransparent(b.type)) {
+                    b.lightLevel = light;
+                } else {
+                    b.lightLevel = 15;
+                    //break; // sunlight blocked
+                }
+            }
+        }
+    }
+
 }
 
 
@@ -96,7 +117,7 @@ bool Chunk::isAir(int x, int y, int z) {
 
 bool Chunk::isWater(int x, int y, int z) {
     if (x < 0 || x >= CHUNK_WIDTH || y < 0 || y >= CHUNK_HEIGHT || z < 0 || z >= CHUNK_WIDTH)
-        return true;  // Outside chunk = not water
+        return true;  // Outside chunk = water
     return blocks[x][y][z].type == BlockType::Water;
 }
 
@@ -115,54 +136,56 @@ void Chunk::addFace(int x, int y, int z, int faceDir,unsigned int& vertexCount, 
     UVRect uvSide = getUVForTile(sideTexture);
     UVRect uvBottom = getUVForTile(bottomTexture);
 
+    //Gets light float, needs to static cast because lightLevel is uint8
+    float light = (blocks[x][y][z].lightLevel) / 15.0f;
 
   switch (faceDir) {
     case 0: // Front (+Z)
         vertices.insert(vertices.end(), {
-            fx,     fy,     fz+1.0f,  uvSide.uMin, uvSide.vMin,
-            fx+1.0f,fy,     fz+1.0f,  uvSide.uMax, uvSide.vMin,
-            fx+1.0f,fy+1.0f,fz+1.0f,  uvSide.uMax, uvSide.vMax,
-            fx,     fy+1.0f,fz+1.0f,  uvSide.uMin, uvSide.vMax
+            fx,     fy,     fz+1.0f,  uvSide.uMin, uvSide.vMin, light,
+            fx+1.0f,fy,     fz+1.0f,  uvSide.uMax, uvSide.vMin, light,
+            fx+1.0f,fy+1.0f,fz+1.0f,  uvSide.uMax, uvSide.vMax, light,
+            fx,     fy+1.0f,fz+1.0f,  uvSide.uMin, uvSide.vMax, light
         });
         break;
     case 1: // Back (-Z)
         vertices.insert(vertices.end(), {
-            fx,     fy,     fz,  uvSide.uMax, uvSide.vMin, 
-            fx+1.0f,fy,     fz,  uvSide.uMin, uvSide.vMin,
-            fx+1.0f,fy+1.0f,fz,  uvSide.uMin, uvSide.vMax,
-            fx,     fy+1.0f,fz,  uvSide.uMax, uvSide.vMax
+            fx,     fy,     fz,  uvSide.uMax, uvSide.vMin, light, 
+            fx+1.0f,fy,     fz,  uvSide.uMin, uvSide.vMin, light,
+            fx+1.0f,fy+1.0f,fz,  uvSide.uMin, uvSide.vMax, light,
+            fx,     fy+1.0f,fz,  uvSide.uMax, uvSide.vMax, light
         });
         break;
     case 2: // Top (+Y)
         vertices.insert(vertices.end(), {
-            fx,     fy+1.0f,fz,      uvTop.uMin, uvTop.vMax,
-            fx+1.0f,fy+1.0f,fz,      uvTop.uMax, uvTop.vMax,
-            fx+1.0f,fy+1.0f,fz+1.0f, uvTop.uMax, uvTop.vMin,
-            fx,     fy+1.0f,fz+1.0f, uvTop.uMin, uvTop.vMin
+            fx,     fy+1.0f,fz,      uvTop.uMin, uvTop.vMax, light,
+            fx+1.0f,fy+1.0f,fz,      uvTop.uMax, uvTop.vMax, light,
+            fx+1.0f,fy+1.0f,fz+1.0f, uvTop.uMax, uvTop.vMin, light,
+            fx,     fy+1.0f,fz+1.0f, uvTop.uMin, uvTop.vMin, light
         });
         break;
     case 3: // Bottom (-Y)
         vertices.insert(vertices.end(), {
-            fx,     fy,     fz,      uvBottom.uMin, uvBottom.vMin,
-            fx+1.0f,fy,     fz,      uvBottom.uMax, uvBottom.vMin,
-            fx+1.0f,fy,     fz+1.0f, uvBottom.uMax, uvBottom.vMax,
-            fx,     fy,     fz+1.0f, uvBottom.uMin, uvBottom.vMax
+            fx,     fy,     fz,      uvBottom.uMin, uvBottom.vMin, light,
+            fx+1.0f,fy,     fz,      uvBottom.uMax, uvBottom.vMin, light,
+            fx+1.0f,fy,     fz+1.0f, uvBottom.uMax, uvBottom.vMax, light,
+            fx,     fy,     fz+1.0f, uvBottom.uMin, uvBottom.vMax, light
         });
         break;
     case 4: // Left (-X)
         vertices.insert(vertices.end(), {
-            fx,     fy,     fz+1.0f,  uvSide.uMax, uvSide.vMin,
-            fx,     fy,     fz,       uvSide.uMin, uvSide.vMin,
-            fx,     fy+1.0f,fz,       uvSide.uMin, uvSide.vMax,
-            fx,     fy+1.0f,fz+1.0f,  uvSide.uMax, uvSide.vMax
+            fx,     fy,     fz+1.0f,  uvSide.uMax, uvSide.vMin, light,
+            fx,     fy,     fz,       uvSide.uMin, uvSide.vMin, light,
+            fx,     fy+1.0f,fz,       uvSide.uMin, uvSide.vMax, light,
+            fx,     fy+1.0f,fz+1.0f,  uvSide.uMax, uvSide.vMax, light
         });
         break;
     case 5: // Right (+X)
         vertices.insert(vertices.end(), {
-            fx+1.0f,fy,     fz,       uvSide.uMax, uvSide.vMin,
-            fx+1.0f,fy,     fz+1.0f,  uvSide.uMin, uvSide.vMin,
-            fx+1.0f,fy+1.0f,fz+1.0f,  uvSide.uMin, uvSide.vMax,
-            fx+1.0f,fy+1.0f,fz,       uvSide.uMax, uvSide.vMax
+            fx+1.0f,fy,     fz,       uvSide.uMax, uvSide.vMin, light,
+            fx+1.0f,fy,     fz+1.0f,  uvSide.uMin, uvSide.vMin, light,
+            fx+1.0f,fy+1.0f,fz+1.0f,  uvSide.uMin, uvSide.vMax, light,
+            fx+1.0f,fy+1.0f,fz,       uvSide.uMax, uvSide.vMax, light
         });
         break;
     }
@@ -188,32 +211,34 @@ void Chunk::addWaterFace(int x, int y, int z, int faceDir,unsigned int& waterVer
     // slightly lower or raise the top face
     const float WATER_OFFSET = 0.05f;
 
+    float light = (blocks[x][y][z].lightLevel) / 15.0f;
+
     switch (faceDir)
     {
         case 0: // Front (+Z)
             waterVertices.insert(waterVertices.end(), {
-                fx,     fy,     fz+1.0f,  uv.uMin, uv.vMin,
-                fx+1.0f,fy,     fz+1.0f,  uv.uMax, uv.vMin,
-                fx+1.0f,fy+1.0f,fz+1.0f,  uv.uMax, uv.vMax,
-                fx,     fy+1.0f,fz+1.0f,  uv.uMin, uv.vMax
+                fx,     fy,     fz+1.0f,  uv.uMin, uv.vMin, light,
+                fx+1.0f,fy,     fz+1.0f,  uv.uMax, uv.vMin, light,
+                fx+1.0f,fy+1.0f,fz+1.0f,  uv.uMax, uv.vMax, light,
+                fx,     fy+1.0f,fz+1.0f,  uv.uMin, uv.vMax, light
             });
             break;
 
         case 1: // Back (-Z)
             waterVertices.insert(waterVertices.end(), {
-                fx,     fy,     fz,  uv.uMax, uv.vMin,
-                fx+1.0f,fy,     fz,  uv.uMin, uv.vMin,
-                fx+1.0f,fy+1.0f,fz,  uv.uMin, uv.vMax,
-                fx,     fy+1.0f,fz,  uv.uMax, uv.vMax
+                fx,     fy,     fz,  uv.uMax, uv.vMin, light,
+                fx+1.0f,fy,     fz,  uv.uMin, uv.vMin, light,
+                fx+1.0f,fy+1.0f,fz,  uv.uMin, uv.vMax, light,
+                fx,     fy+1.0f,fz,  uv.uMax, uv.vMax, light
             });
             break;
 
         case 2: // Top (+Y)
             waterVertices.insert(waterVertices.end(), {
-                fx,       fy+1.0f - WATER_OFFSET, fz,      uv.uMin, uv.vMax,
-                fx+1.0f,  fy+1.0f - WATER_OFFSET, fz,      uv.uMax, uv.vMax,
-                fx+1.0f,  fy+1.0f - WATER_OFFSET, fz+1.0f, uv.uMax, uv.vMin,
-                fx,       fy+1.0f - WATER_OFFSET, fz+1.0f, uv.uMin, uv.vMin
+                fx,       fy+1.0f - WATER_OFFSET, fz,      uv.uMin, uv.vMax, light,
+                fx+1.0f,  fy+1.0f - WATER_OFFSET, fz,      uv.uMax, uv.vMax, light,
+                fx+1.0f,  fy+1.0f - WATER_OFFSET, fz+1.0f, uv.uMax, uv.vMin, light,
+                fx,       fy+1.0f - WATER_OFFSET, fz+1.0f, uv.uMin, uv.vMin, light
             });
             break;
 
@@ -221,28 +246,28 @@ void Chunk::addWaterFace(int x, int y, int z, int faceDir,unsigned int& waterVer
             // Usually water bottom is invisible — skip if desired:
             // return;
             waterVertices.insert(waterVertices.end(), {
-                fx,     fy,     fz,      uv.uMin, uv.vMin,
-                fx+1.0f,fy,     fz,      uv.uMax, uv.vMin,
-                fx+1.0f,fy,     fz+1.0f, uv.uMax, uv.vMax,
-                fx,     fy,     fz+1.0f, uv.uMin, uv.vMax
+                fx,     fy,     fz,      uv.uMin, uv.vMin, light,
+                fx+1.0f,fy,     fz,      uv.uMax, uv.vMin, light,
+                fx+1.0f,fy,     fz+1.0f, uv.uMax, uv.vMax, light,
+                fx,     fy,     fz+1.0f, uv.uMin, uv.vMax, light
             });
             break;
 
         case 4: // Left (-X)
             waterVertices.insert(waterVertices.end(), {
-                fx,     fy,     fz+1.0f,  uv.uMax, uv.vMin,
-                fx,     fy,     fz,       uv.uMin, uv.vMin,
-                fx,     fy+1.0f,fz,       uv.uMin, uv.vMax,
-                fx,     fy+1.0f,fz+1.0f,  uv.uMax, uv.vMax
+                fx,     fy,     fz+1.0f,  uv.uMax, uv.vMin, light,
+                fx,     fy,     fz,       uv.uMin, uv.vMin, light,
+                fx,     fy+1.0f,fz,       uv.uMin, uv.vMax, light,
+                fx,     fy+1.0f,fz+1.0f,  uv.uMax, uv.vMax, light
             });
             break;
 
         case 5: // Right (+X)
             waterVertices.insert(waterVertices.end(), {
-                fx+1.0f,fy,     fz,       uv.uMax, uv.vMin,
-                fx+1.0f,fy,     fz+1.0f,  uv.uMin, uv.vMin,
-                fx+1.0f,fy+1.0f,fz+1.0f,  uv.uMin, uv.vMax,
-                fx+1.0f,fy+1.0f,fz,       uv.uMax, uv.vMax
+                fx+1.0f,fy,     fz,       uv.uMax, uv.vMin, light,
+                fx+1.0f,fy,     fz+1.0f,  uv.uMin, uv.vMin, light,
+                fx+1.0f,fy+1.0f,fz+1.0f,  uv.uMin, uv.vMax, light,
+                fx+1.0f,fy+1.0f,fz,       uv.uMax, uv.vMax, light
             });
             break;
     }
@@ -279,8 +304,9 @@ void Chunk::setupMesh() {
     }
 
     // Set attributes while VAO bound (pos:3, uv:2, stride = 5 floats)
-    vao.setAttr(0, 3, GL_FLOAT, 5 * sizeof(float), 0);
-    vao.setAttr(1, 2, GL_FLOAT, 5 * sizeof(float), 3 * sizeof(float));
+    vao.setAttr(0, 3, GL_FLOAT, 6 * sizeof(float), 0);
+    vao.setAttr(1, 2, GL_FLOAT, 6 * sizeof(float), 3 * sizeof(float));
+    vao.setAttr(2, 1, GL_FLOAT, 6 * sizeof(float), 5 * sizeof(float));
 
     // -----------------------------
     // WATER MESH
@@ -300,8 +326,9 @@ void Chunk::setupMesh() {
         waterEBO.fillData(nullptr, 1);
     }
 
-    waterVAO.setAttr(0, 3, GL_FLOAT, 5 * sizeof(float), 0);
-    waterVAO.setAttr(1, 2, GL_FLOAT, 5 * sizeof(float), 3 * sizeof(float));
+    waterVAO.setAttr(0, 3, GL_FLOAT, 6 * sizeof(float), 0);
+    waterVAO.setAttr(1, 2, GL_FLOAT, 6 * sizeof(float), 3 * sizeof(float));
+    waterVAO.setAttr(2, 1, GL_FLOAT, 6 * sizeof(float), 5 * sizeof(float));
 
 }
 
@@ -365,5 +392,122 @@ void Chunk::uploadMeshData(const std::vector<float>& verts,
         waterEBO.fillData(waterIdx.data(), waterIdx.size() * sizeof(unsigned int));
     } else {
         waterEBO.fillData(nullptr, 1);
+    }
+}
+
+static uint32_t treeHash(uint32_t worldSeed, int wx, int wz) {
+    uint32_t h = worldSeed;
+    h ^= (uint32_t)wx * 0x27d4eb2d;
+    h ^= (uint32_t)wz * 0x165667b1;
+    h ^= h >> 15;
+    h *= 0x85ebca6b;
+    h ^= h >> 13;
+    return h;
+}
+
+bool Chunk::treeNearby(int x, int y, int z, int radius) {
+    for (int dx = -radius; dx <= radius; dx++) {
+        for (int dz = -radius; dz <= radius; dz++) {
+
+            int nx = x + dx;
+            int nz = z + dz;
+
+            if (nx < 0 || nx >= CHUNK_WIDTH ||
+                nz < 0 || nz >= CHUNK_WIDTH)
+                continue;
+
+            // Scan vertically for trunks
+            for (int ny = y; ny < y + 10 && ny < CHUNK_HEIGHT; ny++) {
+                if (blocks[nx][ny][nz].type == BlockType::Log)
+                    return true;
+            }
+        }
+    }
+    return false;
+}
+
+
+//Tree placement
+void Chunk::tryPlaceTree(int x, int y, int z, uint32_t seed) {
+
+    // Only grow on grass
+    if (blocks[x][y][z].type != BlockType::Grass)
+        return;
+
+    // Avoid water & beaches
+    if (y <= 21) return;
+
+    // Avoid chunk edges (important!)
+    if (x < 2 || x > CHUNK_WIDTH - 3 ||
+        z < 2 || z > CHUNK_WIDTH - 3)
+        return;
+
+    int height = 4 + (seed % 4); // 4–7 blocks
+
+    // Vertical space check
+    for (int i = 1; i <= height + 2; i++) {
+        if (!inBounds(x, y + i, z) ||
+            blocks[x][y + i][z].type != BlockType::Air)
+            return;
+    }
+
+    const int TREE_SPACING = 3;
+
+    //If there is a tree within 3 blocks, do not place
+    if (treeNearby(x, y, z, TREE_SPACING))
+        return;
+
+    // Convert grass to dirt
+    blocks[x][y][z].type = BlockType::Dirt;
+
+    // Trunk
+    for (int i = 1; i <= height; i++) {
+        blocks[x][y + i][z].type = BlockType::Log;
+    }
+
+    // Leaves (simple spherical canopy)
+    int cy = y + height;
+    for (int dx = -2; dx <= 2; dx++)
+    for (int dy = -2; dy <= 1; dy++)
+    for (int dz = -2; dz <= 2; dz++) {
+        if (dx*dx + dy*dy + dz*dz > 6)
+            continue;
+
+        int lx = x + dx;
+        int ly = cy + dy;
+        int lz = z + dz;
+
+        if (inBounds(lx, ly, lz) &&
+            blocks[lx][ly][lz].type == BlockType::Air) {
+            blocks[lx][ly][lz].type = BlockType::Leaf;
+        }
+    }
+}
+
+//Generates trees randomly
+void Chunk::generateTrees(uint32_t worldSeed) {
+
+    const float TREE_CHANCE = 0.05f; // ~1 tree per 50 columns
+
+    for (int x = 0; x < CHUNK_WIDTH; x++) {
+        for (int z = 0; z < CHUNK_WIDTH; z++) {
+
+            int wx = chunkX * CHUNK_WIDTH + x;
+            int wz = chunkZ * CHUNK_WIDTH + z;
+
+            uint32_t seed = treeHash(worldSeed, wx, wz);
+
+            float r = (seed & 0xFFFF) / float(0xFFFF);
+            if (r > TREE_CHANCE)
+                continue;
+
+            // Find surface
+            for (int y = CHUNK_HEIGHT - 2; y > 0; y--) {
+                if (blocks[x][y][z].type == BlockType::Grass) {
+                    tryPlaceTree(x, y, z, seed);
+                    break;
+                }
+            }
+        }
     }
 }

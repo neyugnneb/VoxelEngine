@@ -10,8 +10,10 @@
 #include <whatever/shader.h>
 #include <whatever/camera.h>
 #include <whatever/world.h>
+#include <whatever/raycast.h>
 #include <vector>
 #include <memory>
+#include <queue>
 #include <iostream>
 
 void framebuffer_size_callback(GLFWwindow* window, int width, int height);
@@ -24,6 +26,7 @@ const unsigned int SCR_WIDTH = 800;
 const unsigned int SCR_HEIGHT = 600;
 
 // camera
+//Camera's initial position is 0, 40, 3. (x, y, z)
 Camera camera(glm::vec3(0.0f, 40.0f, 3.0f));
 float lastX = SCR_WIDTH / 2.0f;
 float lastY = SCR_HEIGHT / 2.0f;
@@ -71,7 +74,7 @@ int main()
 
     // build and compile our shader program
     Shader blockShader("vertexshader.vs", "fragshader.fs"); 
-    Shader waterShader("vertexshader.vs", "waterFrag.fs");
+    Shader waterShader("vertexshader.vs", "watershader.fs");
     
     //Enable depth test
     glEnable(GL_DEPTH_TEST);
@@ -96,7 +99,7 @@ int main()
     // load image, create texture and generate mipmaps
     int width, height, nrChannels;
     stbi_set_flip_vertically_on_load(true);
-    unsigned char *data = stbi_load("atlas4.png", &width, &height, &nrChannels, 0);
+    unsigned char *data = stbi_load("atlaz2.png", &width, &height, &nrChannels, 0);
     if (data)
     {
         glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
@@ -131,20 +134,24 @@ int main()
         processInput(window);
 
         // render
-        glClearColor(0.2f, 0.3f, 0.3f, 1.0f);
+        float sun = world.worldLight(); // 0 = night, 1 = noon
+
+        glm::vec3 nightSky(0.02f, 0.02f, 0.08f);
+        glm::vec3 daySky  (0.53f, 0.81f, 0.92f);
+
+        glm::vec3 sky = glm::mix(nightSky, daySky, sun);
+
+        glClearColor(sky.r, sky.g, sky.b, 1.0f);
+
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
         
 
         // pass projection matrix to shader (note that in this case it could change every frame)
         glm::mat4 projection = glm::perspective(glm::radians(camera.Zoom), (float)SCR_WIDTH / (float)SCR_HEIGHT, 0.1f, 500.0f);
-        blockShader.setMat4("projection", projection);
 
         // camera/view transformation
         glm::mat4 view = camera.GetViewMatrix();
-        blockShader.setMat4("view", view);
-
         glm::mat4 model = glm::mat4(1.0f);
-        blockShader.setMat4("model", model);
 
         glActiveTexture(GL_TEXTURE0);
         glBindTexture(GL_TEXTURE_2D, texture);
@@ -153,7 +160,8 @@ int main()
 
         // 1. Update world based on camera position
         world.update(camera.Position);
-        world.draw(blockShader, waterShader);
+        world.updateTime(deltaTime);
+        world.draw(blockShader, waterShader, projection, view, model);
         
         // restore depth mask
         glDepthMask(GL_TRUE);
