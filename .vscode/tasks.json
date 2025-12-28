@@ -15,7 +15,6 @@
                 "${workspaceFolder}\\src\\vertexArray.cpp",
                 "${workspaceFolder}\\src\\elementBuffer.cpp",
                 "${workspaceFolder}\\src\\chunk.cpp",
-                "${workspaceFolder}\\src\\raycast.cpp",
                 "${workspaceFolder}\\src\\world.cpp",
 
 

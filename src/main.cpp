@@ -10,7 +10,6 @@
 #include <whatever/shader.h>
 #include <whatever/camera.h>
 #include <whatever/world.h>
-#include <whatever/raycast.h>
 #include <vector>
 #include <memory>
 #include <queue>
